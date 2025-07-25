@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>Warfarin Double Checker</title>
+    <style>
+        body { font-family: sans-serif; max-width: 500px; margin: auto; padding: 20px; background: #f0f8ff; border: 2px solid black; border-radius: 15px; margin-top: 20px; }
+        h2 { text-align: center; margin-bottom: 5px; }
+        .subtitle { text-align: center; font-size: 0.9em; color: #555; margin-bottom: 15px; }
+        label, .result { display: block; margin-top: 10px; }
+        input[type="date"], input[type="number"], input[type="text"] { padding: 4px; width: 100%; max-width: 200px; }
+        .summary { margin-top: 15px; font-weight: bold; text-align: center; background: #e6ffe6; padding: 10px; border-radius: 6px; }
+        .warfarin-options { display: flex; justify-content: space-around; margin-top: 10px; }
+        .warfarin-options .pill-option:nth-child(1) { order: 1; }
+        .warfarin-options .pill-option:nth-child(2) { order: 3; }
+        .warfarin-options .pill-option:nth-child(3) { order: 2; }
+        .pill-option { width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-weight: bold; color: white; }
+        .pill-option.selected { border: 3px solid red; }
+        .mg2 { background-color: orange; }
+        .mg3 { background-color: #3baeff; }
+        .mg5 { background-color: #ff66b2; }
+        button { margin-top: 15px; padding: 10px 20px; width: 100%; }
+        .result, .save-section { margin-top: 20px; text-align: center; }
+        hr { border: none; border-top: 1px dashed black; margin-top: 20px; }
+        .satisfaction-container { text-align: center; margin-top: 15px; }
+        .satisfaction-option {
+            font-size: 2.2em;
+            cursor: pointer;
+            padding: 5px;
+            margin: 0 8px;
+            border-radius: 10px;
+            display: inline-block;
+            transition: transform 0.2s, background-color 0.2s;
+        }
+        .satisfaction-option:hover { transform: scale(1.15); }
+        .satisfaction-option.selected { background-color: #aaeaff; border: 2px solid #007bff; }
+    </style>
+</head>
+<body>
+    <h2>Warfarin Double Checker</h2>
+    <div class="subtitle">โปรแกรมช่วยตรวจสอบความถูกต้องของขนาดยาและจำนวนเม็ด Warfarin</div>
+    <label>วันที่มาโรงพยาบาล: <input type="date" id="startDate" style="text-align:center"></label>
+    <label>วันที่นัดครั้งต่อไป: <input type="date" id="endDate" style="text-align:center"></label>
+    <div id="durationSummary" class="summary">กรุณากรอกวันที่</div>
+    <label>เลือกขนาดยา Warfarin:</label>
+    <div class="warfarin-options">
+        <div class="pill-option mg2" data-mg="2">2 mg</div>
+        <div class="pill-option mg5" data-mg="5">5 mg</div>
+        <div class="pill-option mg3" data-mg="3">3 mg</div>
+    </div>
+    <label>จำนวนเม็ดยา (ต่อสัปดาห์): <input type="number" id="pillsPerWeek" min="0" step="any"></label>
+    <button onclick="calculatePills()">คำนวณ</button>
+    <div class="result" id="result"><strong>ผลลัพธ์</strong></div>
+
+    <hr>
+    <div class="satisfaction-container">
+      <label>ความพึงพอใจต่อการใช้งาน</label>
+      <div class="satisfaction-option" data-value="พอใจมาก">😄</div>
+      <div class="satisfaction-option" data-value="พอใจ">😊</div>
+      <div class="satisfaction-option" data-value="เฉยๆ">😐</div>
+      <div class="satisfaction-option" data-value="ไม่พอใจ">😠</div>
+    </div>
+
+    <div class="save-section">
+        <label>HN: <input type="text" id="hnInput" style="text-align:center"></label>
+        <button onclick="saveToSheet()">บันทึกข้อมูล</button>
+        <div id="saveStatus" style="margin-top: 10px;"></div>
+    </div>
+
+    <script>
+        let selectedMg = 0;
+        let selectedSatisfaction = '';
+
+        document.querySelectorAll('.pill-option').forEach(el => {
+            el.addEventListener('click', () => {
+                document.querySelectorAll('.pill-option').forEach(e => e.classList.remove('selected'));
+                el.classList.add('selected');
+                selectedMg = parseFloat(el.dataset.mg);
+            });
+        });
+
+        document.querySelectorAll('.satisfaction-option').forEach(el => {
+            el.addEventListener('click', () => {
+                document.querySelectorAll('.satisfaction-option').forEach(e => e.classList.remove('selected'));
+                el.classList.add('selected');
+                selectedSatisfaction = el.dataset.value;
+            });
+        });
+
+        document.getElementById("startDate").addEventListener("change", updateDuration);
+        document.getElementById("endDate").addEventListener("change", updateDuration);
+        let totalDays = 0;
+        function updateDuration() {
+            const start = new Date(document.getElementById("startDate").value);
+            const end = new Date(document.getElementById("endDate").value);
+            if (isNaN(start) || isNaN(end) || start > end) {
+                document.getElementById("durationSummary").textContent = "กรุณากรอกวันที่ให้ถูกต้อง (รวมวันสุดท้ายด้วย)"; return;
+            }
+            totalDays = Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1;
+            const weeks = Math.floor(totalDays / 7);
+            const daysRemain = totalDays % 7;
+            document.getElementById("durationSummary").textContent = `จำนวน ${totalDays} วัน (${weeks} สัปดาห์ ${daysRemain} วัน)`;
+        }
+        function calculatePills() {
+            const pillsPerWeek = parseFloat(document.getElementById("pillsPerWeek").value);
+            if (!selectedMg || isNaN(pillsPerWeek)) {
+                document.getElementById("result").textContent = "กรุณาเลือกขนาดยาและใส่จำนวนเม็ดต่อสัปดาห์ให้ถูกต้อง"; return;
+            }
+            const weeks = Math.floor(totalDays / 7);
+            const daysRemain = totalDays % 7;
+            const basePills = Math.round(pillsPerWeek * weeks);
+            const extraPills = daysRemain;
+            const totalPills = basePills + extraPills;
+            const weeklyMg = pillsPerWeek * selectedMg;
+            document.getElementById("result").innerHTML =
+                `Warfarin ${selectedMg} mg<br>` +
+                `ขนาดยา: ${Number.isInteger(weeklyMg) ? weeklyMg : weeklyMg.toFixed(1)} mg/week<br>` +
+                `จำนวนเม็ดยา: ${totalPills} เม็ด (จนถึงวันนัด)`;
+        }
+        
+        function saveToSheet() {
+            const startDate = document.getElementById("startDate").value;
+            const hn = document.getElementById("hnInput").value;
+            const saveStatus = document.getElementById("saveStatus");
+
+            const formSubmitUrl = 'https://docs.google.com/forms/d/e/1FAIpQLSfbGDMR6w4G8ryCEJsvDi87ocads60sKE1ouyhnfjL_ocAC2g/formResponse';
+            const dateFieldId = 'entry.2012909156';
+            const hnFieldId = 'entry.946045754';
+            const satisfactionFieldId = 'entry.383080130'; // <-- ใส่ ID ที่ถูกต้องให้แล้ว
+
+            if (!startDate || !hn || !selectedSatisfaction) {
+                saveStatus.textContent = "กรุณากรอก วันที่, HN, และเลือกความพึงพอใจให้ครบถ้วน";
+                return;
+            }
+
+            saveStatus.textContent = "กำลังบันทึก...";
+            const formData = new FormData();
+            formData.append(dateFieldId, startDate);
+            formData.append(hnFieldId, hn);
+            formData.append(satisfactionFieldId, selectedSatisfaction);
+
+            fetch(formSubmitUrl, { method: 'POST', body: formData, mode: 'no-cors' })
+            .then(response => {
+                saveStatus.textContent = "บันทึกข้อมูลเรียบร้อยแล้ว!";
+                document.getElementById("startDate").value = '';
+                document.getElementById("endDate").value = '';
+                document.getElementById("pillsPerWeek").value = '';
+                document.getElementById("hnInput").value = '';
+                document.getElementById("durationSummary").textContent = "กรุณากรอกวันที่";
+                document.getElementById("result").innerHTML = "<strong>ผลลัพธ์</strong>";
+                document.querySelectorAll('.pill-option').forEach(e => e.classList.remove('selected'));
+                selectedMg = 0;
+                document.querySelectorAll('.satisfaction-option').forEach(e => e.classList.remove('selected'));
+                selectedSatisfaction = '';
+                
+                setTimeout(() => { saveStatus.textContent = ''; }, 3000);
+            })
+            .catch(error => {
+                saveStatus.textContent = "เกิดข้อผิดพลาดในการบันทึกข้อมูล: " + error;
+                console.error('Error:', error);
+            });
+        }
+    </script>
+</body>
+</html>
